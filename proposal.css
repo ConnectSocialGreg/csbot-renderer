@@ -1,0 +1,130 @@
+@font-face{ font-family:'Archivo'; src:url('Archivo-700.ttf'); font-weight:700; }
+@font-face{ font-family:'Archivo'; src:url('Archivo-800.ttf'); font-weight:800; }
+@font-face{ font-family:'Hanken'; src:url('Hanken-400.ttf'); font-weight:400; }
+@font-face{ font-family:'Hanken'; src:url('Hanken-500.ttf'); font-weight:500; }
+@font-face{ font-family:'Hanken'; src:url('Hanken-700.ttf'); font-weight:700; }
+@font-face{ font-family:'Hanken'; src:url('Hanken-800.ttf'); font-weight:800; }
+
+:root{
+  --ink:#0A0A0B; --paper:#FFFFFF; --off:#F4F4F6; --line:#E1E1E5;
+  --muted:#33333A; --soft:#9A9AA2;
+  --metal:linear-gradient(135deg,#3A3A40,#0C0C0E);
+  --rule:linear-gradient(90deg,#0A0A0B,#9C9CA4);
+}
+*{ margin:0; padding:0; box-sizing:border-box; }
+@page{ size:Letter; margin:0; }
+html{ font-family:'Hanken',sans-serif; color:var(--ink); }
+
+.page{ position:relative; width:8.5in; height:11in; overflow:hidden; background:var(--paper);
+  page-break-after:always; }
+.page:last-child{ page-break-after:auto; }
+.pad{ position:relative; z-index:3; padding:0.72in; height:100%; }
+
+.eyebrow{ font-size:9.5pt; font-weight:700; letter-spacing:.16em; text-transform:uppercase; color:#3C3C44; }
+.eyebrow b{ color:var(--ink); } .eyebrow.dk{ color:#CACAD2; } .eyebrow.dk b{ color:#fff; }
+.h{ font-family:'Archivo'; font-weight:800; font-size:28pt; line-height:1.04; letter-spacing:-.022em; margin-top:14px; }
+.h.sm{ font-size:24pt; }
+.rule{ height:3px; width:44px; background:var(--rule); border-radius:3px; margin:16px 0 0; }
+.lead{ font-size:11.5pt; line-height:1.62; color:#1C1C20; }
+.muted{ color:var(--muted); }
+.pagenum{ position:absolute; z-index:4; bottom:.5in; right:.72in; font-family:'Archivo'; font-weight:700;
+  font-size:9pt; color:var(--soft); }
+.foot{ position:absolute; z-index:4; bottom:.5in; left:.72in; height:12px; opacity:.5; }
+.foot img{ height:12px; }
+
+/* photo bleeds */
+.bleed-r{ position:absolute; z-index:1; top:0; right:0; height:100%; width:3.7in; }
+.bleed-r img{ width:100%; height:100%; object-fit:cover; }
+.bleed-b{ position:absolute; z-index:1; left:0; right:0; bottom:0; width:100%; }
+.bleed-b img{ width:100%; display:block; }
+.orb{ position:absolute; z-index:1; width:6.6in; opacity:.8; }
+
+/* COVER */
+.cover{ background:#000 url('img/cover_photo.jpg') center/cover no-repeat; color:#fff; }
+.cover .top{ position:absolute; top:.72in; left:.72in; right:.72in; z-index:4;
+  display:flex; justify-content:space-between; align-items:center; }
+.cover .logo{ height:30px; width:30px; }
+.cover .lbl{ font-size:9pt; letter-spacing:.22em; text-transform:uppercase; color:#FFFFFF; }
+.cover .blk{ position:absolute; z-index:4; left:.72in; right:.72in; bottom:.78in; }
+.cover h1{ font-family:'Archivo'; font-weight:800; font-size:48pt; line-height:1.0; letter-spacing:-.03em; color:#fff; }
+.cover .sub{ margin-top:20px; font-size:12.5pt; color:#ECECEF; max-width:5.2in; line-height:1.5; }
+.cover .meta{ margin-top:34px; display:flex; gap:50px; border-top:1px solid rgba(255,255,255,.22); padding-top:16px; }
+.cover .meta .k{ font-size:8pt; letter-spacing:.16em; text-transform:uppercase; color:#C2C5CD; }
+.cover .meta .v{ font-size:11pt; font-weight:700; margin-top:4px; color:#fff; }
+
+/* stats */
+.stats{ display:flex; gap:12px; margin-top:26px; }
+.stat{ flex:1; background:var(--off); border:1px solid var(--line); border-radius:13px; padding:18px 16px; }
+.stat .n{ font-family:'Archivo'; font-weight:800; font-size:23pt; line-height:1; letter-spacing:-.02em; color:var(--ink); }
+.stat .l{ margin-top:8px; font-size:9.5pt; line-height:1.42; color:var(--muted); }
+
+/* cards */
+.grid{ display:flex; flex-wrap:wrap; gap:12px; margin-top:22px; }
+.card{ width:calc(50% - 6px); background:var(--paper); border:1px solid var(--line); border-radius:14px;
+  padding:18px 20px; box-shadow:0 1px 0 #fff inset, 0 3px 12px rgba(10,10,11,.05); }
+.card.full{ width:100%; }
+.chip{ width:32px; height:32px; border-radius:9px; background:var(--metal);
+  box-shadow:0 1px 0 rgba(255,255,255,.18) inset; color:#fff; font-family:'Archivo'; font-weight:800;
+  font-size:12pt; display:flex; align-items:center; justify-content:center; }
+.card h3{ font-family:'Archivo'; font-weight:700; font-size:12.5pt; margin-top:12px; letter-spacing:-.01em; color:var(--ink); }
+.card p{ font-size:10pt; line-height:1.5; color:var(--muted); margin-top:6px; }
+.card .tg{ margin-top:11px; font-size:9pt; font-weight:700; color:var(--ink);
+  border-top:1px solid var(--line); padding-top:9px; }
+.card .tg span{ color:var(--muted); font-weight:500; }
+
+/* scope */
+.deliv{ margin-top:18px; border-top:1px solid var(--line); }
+.deliv .r{ display:flex; gap:18px; padding:12px 0; border-bottom:1px solid var(--line); }
+.deliv .w{ width:1.9in; font-family:'Archivo'; font-weight:700; font-size:11pt; color:var(--ink); }
+.deliv .d{ flex:1; font-size:10pt; line-height:1.5; color:var(--muted); }
+
+/* timeline */
+.tl{ display:flex; gap:12px; margin-top:24px; }
+.phase{ flex:1; border:1px solid var(--line); border-radius:14px; padding:18px 18px;
+  box-shadow:0 3px 12px rgba(10,10,11,.05); }
+.phase .ph{ font-family:'Archivo'; font-weight:800; font-size:8.5pt; letter-spacing:.08em; color:#52525A; }
+.phase h3{ font-family:'Archivo'; font-weight:700; font-size:13pt; margin-top:7px; color:var(--ink); }
+.phase ul{ margin-top:12px; list-style:none; }
+.phase li{ font-size:9.5pt; line-height:1.45; color:var(--muted); padding-left:14px; position:relative; margin-bottom:7px; }
+.phase li:before{ content:''; position:absolute; left:0; top:6px; width:5px; height:5px; border-radius:50%; background:var(--ink); }
+
+/* pricing */
+.tiers{ display:flex; gap:12px; margin-top:24px; align-items:stretch; }
+.tier{ flex:1; border:1px solid var(--line); border-radius:16px; padding:20px 18px; background:var(--paper);
+  display:flex; flex-direction:column; min-height:3.6in; box-shadow:0 3px 14px rgba(10,10,11,.05); }
+.tier.best{ background:var(--ink); border:1px solid var(--ink); color:#fff; }
+.tier .badge{ display:inline-block; font-family:'Archivo'; font-size:7pt; font-weight:800; letter-spacing:.12em;
+  text-transform:uppercase; color:#0A0A0B; background:#fff; padding:4px 9px; border-radius:20px; margin-bottom:11px; }
+.tier .nm{ font-family:'Archivo'; font-size:12.5pt; font-weight:700; }
+.tier .pr{ font-family:'Archivo'; font-weight:800; font-size:25pt; margin-top:7px; letter-spacing:-.022em; }
+.tier .pr small{ font-size:9.5pt; font-weight:500; color:#6A6A72; letter-spacing:0; }
+.tier.best .pr small{ color:#B6B6BE; }
+.tier ul{ list-style:none; margin-top:14px; }
+.tier li{ font-size:9.5pt; line-height:1.4; color:#26262C; padding:6px 0 6px 15px; position:relative; border-top:1px solid var(--line); }
+.tier li:first-child{ border-top:none; }
+.tier li:before{ content:''; position:absolute; left:0; top:10px; width:5px; height:5px; border-radius:50%; background:var(--ink); }
+.tier.best li{ color:#E0E0E4; border-top:1px solid rgba(255,255,255,.14); }
+.tier.best li:before{ background:#fff; }
+.terms{ margin-top:24px; font-size:9.5pt; color:var(--muted); text-align:center; }
+
+/* why stats */
+.why-stats{ display:flex; gap:12px; margin-top:24px; }
+.why-stats .s{ flex:1; text-align:center; padding:20px 12px; border-radius:14px; background:var(--off); border:1px solid var(--line); }
+.why-stats .s .n{ font-family:'Archivo'; font-weight:800; font-size:25pt; letter-spacing:-.02em; line-height:1; color:var(--ink); }
+.why-stats .s .l{ font-size:9pt; color:var(--muted); margin-top:9px; line-height:1.4; }
+
+/* closing */
+.close{ background:#000 url('img/close_photo.jpg') center/cover no-repeat; color:#fff; }
+.close .logo{ height:28px; width:28px; }
+.close h2{ font-family:'Archivo'; font-weight:800; font-size:32pt; line-height:1.04; letter-spacing:-.028em; margin-top:12px; }
+.steps{ margin-top:26px; }
+.step{ display:flex; gap:18px; padding:17px 0; border-top:1px solid rgba(255,255,255,.22); }
+.step .no{ font-family:'Archivo'; font-weight:800; font-size:15pt; color:#fff; width:28px; opacity:.55; }
+.step h4{ font-family:'Archivo'; font-weight:700; font-size:13pt; }
+.step p{ font-size:10pt; color:#DDDDE1; margin-top:3px; line-height:1.45; }
+.signoff{ position:absolute; left:.72in; right:.72in; bottom:.78in; z-index:4;
+  border-top:1px solid rgba(255,255,255,.22); padding-top:20px;
+  display:flex; justify-content:space-between; align-items:flex-end; }
+.signoff .q{ font-size:11pt; color:#E6E6EA; max-width:3.8in; line-height:1.5; }
+.signoff .c{ text-align:right; font-size:10pt; line-height:1.65; color:#E6E6EA; }
+.signoff .c b{ color:#fff; font-family:'Archivo'; font-weight:700; }
