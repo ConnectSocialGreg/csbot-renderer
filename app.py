@@ -21,7 +21,8 @@ FONTS = ["Archivo-700.ttf", "Archivo-800.ttf", "Hanken-400.ttf",
          "Hanken-500.ttf", "Hanken-700.ttf", "Hanken-800.ttf"]
 FLAT = ["proposal.css", "cs-logo-white.png", "cs_logo3_720.png"] + FONTS
 
-PEXELS_KEY = os.environ.get("PEXELS_API_KEY", "")
+PEXELS_KEY = os.environ.get("PEXELS_API_KEY", "").strip()
+UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 ORIENT = {"cover": "portrait", "close": "portrait", "side": "portrait",
           "b1": "landscape", "b2": "landscape", "b3": "landscape"}
 
@@ -35,7 +36,7 @@ def pexels_url(phrase, orientation):
     try:
         u = ("https://api.pexels.com/v1/search?query=%s&per_page=12&orientation=%s"
              % (urllib.parse.quote(phrase), orientation))
-        req = urllib.request.Request(u, headers={"Authorization": PEXELS_KEY})
+        req = urllib.request.Request(u, headers={"Authorization": PEXELS_KEY, "User-Agent": UA})
         d = json.loads(urllib.request.urlopen(req, timeout=20).read())
         photos = d.get("photos") or []
         if photos:
