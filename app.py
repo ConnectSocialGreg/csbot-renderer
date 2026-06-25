@@ -8,7 +8,7 @@ csBot writes the copy (with its own Claude key) and sends finished HTML plus the
 image URLs it picked. This service treats the images (B&W + fade, identical to the
 approved pipeline) and renders the PDF with weasyprint. No API key needed here.
 """
-import os, io, shutil, tempfile, urllib.request
+import os, io, json, shutil, tempfile, urllib.request, urllib.parse
 import numpy as np
 from PIL import Image, ImageOps, ImageEnhance
 from fastapi import FastAPI, Response
@@ -21,7 +21,29 @@ FONTS = ["Archivo-700.ttf", "Archivo-800.ttf", "Hanken-400.ttf",
          "Hanken-500.ttf", "Hanken-700.ttf", "Hanken-800.ttf"]
 FLAT = ["proposal.css", "cs-logo-white.png", "cs_logo3_720.png"] + FONTS
 
+PEXELS_KEY = os.environ.get("PEXELS_API_KEY", "")
+ORIENT = {"cover": "portrait", "close": "portrait", "side": "portrait",
+          "b1": "landscape", "b2": "landscape", "b3": "landscape"}
+
 app = FastAPI(title="cs-proposal-renderer")
+
+
+def pexels_url(phrase, orientation):
+    """Resolve a search phrase to a high-res image URL via Pexels."""
+    if not PEXELS_KEY:
+        return None
+    try:
+        u = ("https://api.pexels.com/v1/search?query=%s&per_page=12&orientation=%s"
+             % (urllib.parse.quote(phrase), orientation))
+        req = urllib.request.Request(u, headers={"Authorization": PEXELS_KEY})
+        d = json.loads(urllib.request.urlopen(req, timeout=20).read())
+        photos = d.get("photos") or []
+        if photos:
+            s = photos[0].get("src", {})
+            return s.get("large2x") or s.get("original") or s.get("large")
+    except Exception as e:
+        print("pexels error:", e)
+    return None
 
 
 def _fetch(url: str) -> bytes:
@@ -126,10 +148,14 @@ def render(req: RenderReq):
             shutil.copy(os.path.join(APP_DIR, f), os.path.join(tmp, f))
         imgdir = os.path.join(tmp, "img"); os.makedirs(imgdir)
 
-        for key, url in (req.images or {}).items():
-            if key not in TREATERS or not url:
+        for key, val in (req.images or {}).items():
+            if key not in TREATERS or not val:
                 continue
             fname, fn = TREATERS[key]
+            url = val if str(val).startswith("http") else pexels_url(val, ORIENT.get(key, "landscape"))
+            if not url:
+                print(f"no image resolved for '{key}' ({val})")
+                continue
             try:
                 fn(_fetch(url), os.path.join(imgdir, fname))
             except Exception as e:
