@@ -8,7 +8,7 @@ csBot writes the copy (with its own Claude key) and sends finished HTML plus the
 image URLs it picked. This service treats the images (B&W + fade, identical to the
 approved pipeline) and renders the PDF with weasyprint. No API key needed here.
 """
-import os, io, json, shutil, tempfile, urllib.request, urllib.parse
+import os, io, re, json, shutil, tempfile, urllib.request, urllib.parse
 import numpy as np
 from PIL import Image, ImageOps, ImageEnhance
 from fastapi import FastAPI, Response
@@ -48,8 +48,33 @@ def pexels_url(phrase, orientation):
 
 
 def _fetch(url: str) -> bytes:
-    req = urllib.request.Request(url, headers={"User-Agent": "cs-renderer/1.0"})
+    req = urllib.request.Request(url, headers={"User-Agent": UA})
     return urllib.request.urlopen(req, timeout=25).read()
+
+
+def _resolve_to_image(url: str) -> str:
+    """If url is a direct image, return it. If it's a web page, return its
+    og:image / twitter:image / image_src (so 'pull a cover from his site' works)."""
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": UA})
+        resp = urllib.request.urlopen(req, timeout=25)
+        ctype = (resp.headers.get("Content-Type") or "").lower()
+        if ctype.startswith("image/"):
+            return url
+        html = resp.read(800000).decode("utf-8", "ignore")
+        pats = [
+            r'<meta[^>]+property=["\']og:image(?::secure_url|:url)?["\'][^>]+content=["\']([^"\']+)',
+            r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']',
+            r'<meta[^>]+name=["\']twitter:image(?::src)?["\'][^>]+content=["\']([^"\']+)',
+            r'<link[^>]+rel=["\']image_src["\'][^>]+href=["\']([^"\']+)',
+        ]
+        for p in pats:
+            m = re.search(p, html, re.I)
+            if m:
+                return urllib.parse.urljoin(url, m.group(1).strip())
+    except Exception as e:
+        print("resolve image error:", e)
+    return url  # fall back; _fetch will try it directly
 
 
 def _fill(im, w, h):
@@ -153,7 +178,10 @@ def render(req: RenderReq):
             if key not in TREATERS or not val:
                 continue
             fname, fn = TREATERS[key]
-            url = val if str(val).startswith("http") else pexels_url(val, ORIENT.get(key, "landscape"))
+            if str(val).startswith("http"):
+                url = _resolve_to_image(val)  # direct image, or pull og:image off a site link
+            else:
+                url = pexels_url(val, ORIENT.get(key, "landscape"))
             if not url:
                 print(f"no image resolved for '{key}' ({val})")
                 continue
