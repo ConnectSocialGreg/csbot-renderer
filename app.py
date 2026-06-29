@@ -8,7 +8,7 @@ csBot writes the copy (with its own Claude key) and sends finished HTML plus the
 image URLs it picked. This service treats the images (B&W + fade, identical to the
 approved pipeline) and renders the PDF with weasyprint. No API key needed here.
 """
-import os, io, re, json, shutil, tempfile, urllib.request, urllib.parse
+import os, io, re, gc, json, shutil, tempfile, urllib.request, urllib.parse
 import numpy as np
 from PIL import Image, ImageOps, ImageEnhance
 from fastapi import FastAPI, Response
@@ -87,7 +87,9 @@ def _fill(im, w, h):
 
 
 def _mono(raw, c=1.15, b=0.95):
-    im = ImageOps.grayscale(Image.open(io.BytesIO(raw)))
+    src = Image.open(io.BytesIO(raw))
+    src.thumbnail((2200, 2200), Image.LANCZOS)  # cap decode size to bound memory
+    im = ImageOps.grayscale(src)
     im = ImageEnhance.Contrast(im).enhance(c)
     return ImageEnhance.Brightness(im).enhance(b)
 
@@ -101,7 +103,7 @@ def _save_jpg(arr, path, q=82):
     Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8)).save(path, "JPEG", quality=q, optimize=True)
 
 
-def treat_cover(raw, path, W=1700, H=2200):
+def treat_cover(raw, path, W=1500, H=1940):
     im = _fill(_mono(raw, 1.16, 0.95), W, H).convert("RGB")
     a = np.asarray(im).astype(np.float32); x, y = _grid(W, H)
     rev = np.clip((x * 0.74 + (1 - y) * 0.6) ** 1.18, 0, 1)[..., None]
@@ -114,7 +116,7 @@ def treat_cover(raw, path, W=1700, H=2200):
     _save_jpg(a, path)
 
 
-def treat_close(raw, path, W=1700, H=2200):
+def treat_close(raw, path, W=1500, H=1940):
     im = _fill(_mono(raw, 1.14, 0.95), W, H).convert("RGB")
     a = np.asarray(im).astype(np.float32); x, y = _grid(W, H)
     rev = np.clip((y * 0.92 + 0.08) ** 1.1, 0, 1)[..., None]
@@ -122,7 +124,7 @@ def treat_close(raw, path, W=1700, H=2200):
     _save_jpg(a, path)
 
 
-def treat_side(raw, path, W=1000, H=2970):
+def treat_side(raw, path, W=880, H=2610):
     im = _fill(_mono(raw, 1.05, 1.18), W, H).convert("L")
     g = np.asarray(im).astype(np.float32)
     g = 255 - (255 - g) * 0.55
@@ -134,7 +136,7 @@ def treat_side(raw, path, W=1000, H=2970):
     _save_jpg(np.stack([out] * 3, -1), path)
 
 
-def treat_bottom(raw, path, W=1700, H=680):
+def treat_bottom(raw, path, W=1500, H=600):
     im = _fill(_mono(raw, 1.08, 1.16), W, H).convert("L")
     g = np.asarray(im).astype(np.float32)
     g = 255 - (255 - g) * 0.5
@@ -189,6 +191,8 @@ def render(req: RenderReq):
                 fn(_fetch(url), os.path.join(imgdir, fname))
             except Exception as e:
                 print(f"image '{key}' failed: {e}")
+            finally:
+                gc.collect()  # release big numpy/PIL buffers between images
 
         pdf = HTML(string=req.html, base_url=tmp).write_pdf()
         return Response(content=pdf, media_type="application/pdf")
