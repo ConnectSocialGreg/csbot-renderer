@@ -11,7 +11,7 @@ approved pipeline) and renders the PDF with weasyprint. No API key needed here.
 import os, io, re, gc, json, shutil, tempfile, urllib.request, urllib.parse
 import numpy as np
 from PIL import Image, ImageOps, ImageEnhance
-from fastapi import FastAPI, Response
+from fastapi import FastAPI, Response, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from weasyprint import HTML
@@ -166,6 +166,32 @@ class RenderReq(BaseModel):
 @app.get("/health")
 def health():
     return {"ok": True, "service": "cs-proposal-renderer"}
+
+
+@app.get("/peek")
+def peek(url: str = Query("")):
+    """Fetch a page and return a short niche-signal summary (title, description, h1s)."""
+    if not str(url).startswith("http"):
+        return {"summary": ""}
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": UA})
+        html = urllib.request.urlopen(req, timeout=15).read(600000).decode("utf-8", "ignore")
+
+        def grab(pat):
+            m = re.search(pat, html, re.I)
+            return re.sub(r"\s+", " ", m.group(1)).strip() if m else ""
+
+        title = grab(r"<title[^>]*>([^<]+)</title>")
+        ogt = grab(r'<meta[^>]+property=["\']og:title["\'][^>]+content=["\']([^"\']+)')
+        desc = grab(r'<meta[^>]+name=["\']description["\'][^>]+content=["\']([^"\']+)')
+        ogd = grab(r'<meta[^>]+property=["\']og:description["\'][^>]+content=["\']([^"\']+)')
+        h1s = [re.sub(r"<[^>]+>", "", h).strip() for h in re.findall(r"<h1[^>]*>(.*?)</h1>", html, re.I | re.S)[:3]]
+        parts = [p for p in [title, ogt, desc, ogd, " / ".join([h for h in h1s if h])] if p]
+        summary = " | ".join(dict.fromkeys(parts))[:600]
+        return {"summary": summary}
+    except Exception as e:
+        print("peek error:", e)
+        return {"summary": ""}
 
 
 @app.post("/render")
