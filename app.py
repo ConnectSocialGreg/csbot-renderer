@@ -241,6 +241,7 @@ class AuditReq(BaseModel):
     prompt: str
     documents: list = []  # [{channel, name, b64}]
     imagery: str = ""
+    images: dict = {}  # caller-supplied image phrases (edits keep the original cover/close)
     channel_id: str
     thread_ts: str
     webhook_url: str
@@ -281,6 +282,8 @@ def do_audit(req: "AuditReq"):
         obj = _anthropic_audit(req.prompt, req.documents)
         html = obj.get("html", "")
         images = obj.get("images", {}) or {}
+        if req.images:
+            images = dict(req.images)  # caller override (edits keep the original cover/close)
         if req.imagery and str(req.imagery).strip().lower().startswith("http"):
             images["cover"] = str(req.imagery).strip()
         pdf = _render_pdf(html, images)
