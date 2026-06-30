@@ -8,7 +8,7 @@ csBot writes the copy (with its own Claude key) and sends finished HTML plus the
 image URLs it picked. This service treats the images (B&W + fade, identical to the
 approved pipeline) and renders the PDF with weasyprint. No API key needed here.
 """
-import os, io, re, gc, json, shutil, tempfile, urllib.request, urllib.parse
+import os, io, re, gc, json, shutil, tempfile, threading, urllib.request, urllib.parse
 import numpy as np
 from PIL import Image, ImageOps, ImageEnhance
 from fastapi import FastAPI, Response, Query, BackgroundTasks
@@ -247,6 +247,19 @@ class AuditReq(BaseModel):
     webhook_url: str
     title: str = "Audit"
     filename: str = "audit.pdf"
+    build_msg_ts: str = ""  # the "Building…" message to animate
+    progress_webhook: str = ""  # where to post progress ticks (same bot webhook)
+
+
+def _progress_ticker(stop: threading.Event, webhook: str, channel: str, msg_ts: str):
+    """Post an advancing progress bar to the bot while the audit builds (caps below 100)."""
+    for pct in (10, 20, 30, 42, 54, 64, 72, 79, 85, 89, 92, 94, 95):
+        if stop.wait(10):
+            return
+        _post_json(webhook, {
+            "channel_id": channel, "thread_ts": "", "build_msg_ts": msg_ts, "pct": str(pct),
+            "pdf_url": "", "meta_url": "", "title": "", "filename": "", "error": "",
+        })
 
 
 def _anthropic_audit(prompt, documents):
@@ -278,6 +291,13 @@ def _post_json(url, payload):
 
 
 def do_audit(req: "AuditReq"):
+    stop = threading.Event()
+    if req.progress_webhook and req.build_msg_ts:
+        threading.Thread(
+            target=_progress_ticker,
+            args=(stop, req.progress_webhook, req.channel_id, req.build_msg_ts),
+            daemon=True,
+        ).start()
     try:
         obj = _anthropic_audit(req.prompt, req.documents)
         html = obj.get("html", "")
@@ -288,19 +308,23 @@ def do_audit(req: "AuditReq"):
             images["cover"] = str(req.imagery).strip()
         pdf = _render_pdf(html, images)
         AUDIT_RESULTS[req.thread_ts] = {"pdf": pdf, "html": html, "images": json.dumps(images)}
+        stop.set()
         _post_json(req.webhook_url, {
-            "channel_id": req.channel_id, "thread_ts": req.thread_ts,
+            "channel_id": req.channel_id, "thread_ts": req.thread_ts, "build_msg_ts": req.build_msg_ts,
             "pdf_url": f"{SELF_URL}/audit_pdf/{req.thread_ts}",
             "meta_url": f"{SELF_URL}/audit_meta/{req.thread_ts}",
             "title": req.title, "filename": req.filename, "error": "",
         })
     except Exception as e:
         print("do_audit error:", e)
+        stop.set()
         _post_json(req.webhook_url, {
-            "channel_id": req.channel_id, "thread_ts": req.thread_ts,
+            "channel_id": req.channel_id, "thread_ts": req.thread_ts, "build_msg_ts": req.build_msg_ts,
             "pdf_url": "", "meta_url": "",
             "title": req.title, "filename": req.filename, "error": str(e)[:250],
         })
+    finally:
+        stop.set()
 
 
 @app.post("/audit")
