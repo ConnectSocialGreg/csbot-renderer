@@ -11,7 +11,7 @@ approved pipeline) and renders the PDF with weasyprint. No API key needed here.
 import os, io, re, gc, json, shutil, tempfile, urllib.request, urllib.parse
 import numpy as np
 from PIL import Image, ImageOps, ImageEnhance
-from fastapi import FastAPI, Response, Query
+from fastapi import FastAPI, Response, Query, BackgroundTasks
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from weasyprint import HTML
@@ -194,15 +194,14 @@ def peek(url: str = Query("")):
         return {"summary": ""}
 
 
-@app.post("/render")
-def render(req: RenderReq):
+def _render_pdf(html: str, images: dict) -> bytes:
+    """Resolve + treat images, then render the HTML to PDF bytes."""
     tmp = tempfile.mkdtemp(prefix="csr_")
     try:
         for f in FLAT:
             shutil.copy(os.path.join(APP_DIR, f), os.path.join(tmp, f))
         imgdir = os.path.join(tmp, "img"); os.makedirs(imgdir)
-
-        for key, val in (req.images or {}).items():
+        for key, val in (images or {}).items():
             if key not in TREATERS or not val:
                 continue
             fname, fn = TREATERS[key]
@@ -219,10 +218,107 @@ def render(req: RenderReq):
                 print(f"image '{key}' failed: {e}")
             finally:
                 gc.collect()  # release big numpy/PIL buffers between images
-
-        pdf = HTML(string=req.html, base_url=tmp).write_pdf()
-        return Response(content=pdf, media_type="application/pdf")
-    except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e)})
+        return HTML(string=html, base_url=tmp).write_pdf()
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+@app.post("/render")
+def render(req: RenderReq):
+    try:
+        return Response(content=_render_pdf(req.html, req.images or {}), media_type="application/pdf")
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+# ---------------- async audit: long AI generation off the bot's 60s limit ----------------
+ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+SELF_URL = os.environ.get("SELF_URL", "https://csbot-renderer.onrender.com").strip()
+AUDIT_RESULTS = {}  # thread_ts -> pdf bytes (fetched once by the bot, then dropped)
+
+
+class AuditReq(BaseModel):
+    prompt: str
+    documents: list = []  # [{channel, name, b64}]
+    imagery: str = ""
+    channel_id: str
+    thread_ts: str
+    webhook_url: str
+    title: str = "Audit"
+    filename: str = "audit.pdf"
+
+
+def _anthropic_audit(prompt, documents):
+    content = [{"type": "text", "text": prompt}]
+    for d in documents or []:
+        content.append({"type": "text", "text": f"Attached PDF for channel {d.get('channel', '')}, file {d.get('name', '')}:"})
+        content.append({"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": d.get("b64", "")}})
+    body = json.dumps({"model": "claude-sonnet-4-6", "max_tokens": 16000, "messages": [{"role": "user", "content": content}]}).encode()
+    req = urllib.request.Request(
+        "https://api.anthropic.com/v1/messages", data=body, method="POST",
+        headers={"content-type": "application/json", "x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01"})
+    data = json.loads(urllib.request.urlopen(req, timeout=300).read())
+    if data.get("error"):
+        raise RuntimeError("anthropic: " + json.dumps(data["error"])[:300])
+    text = (data.get("content") or [{}])[0].get("text", "")
+    m = re.search(r"\{[\s\S]*\}", text)
+    if not m:
+        raise RuntimeError("no JSON from AI")
+    return json.loads(m.group(0))
+
+
+def _post_json(url, payload):
+    try:
+        req = urllib.request.Request(url, data=json.dumps(payload).encode(), method="POST",
+                                     headers={"content-type": "application/json"})
+        urllib.request.urlopen(req, timeout=30).read()
+    except Exception as e:
+        print("callback post error:", e)
+
+
+def do_audit(req: "AuditReq"):
+    try:
+        obj = _anthropic_audit(req.prompt, req.documents)
+        html = obj.get("html", "")
+        images = obj.get("images", {}) or {}
+        if req.imagery and str(req.imagery).strip().lower().startswith("http"):
+            images["cover"] = str(req.imagery).strip()
+        pdf = _render_pdf(html, images)
+        AUDIT_RESULTS[req.thread_ts] = {"pdf": pdf, "html": html, "images": json.dumps(images)}
+        _post_json(req.webhook_url, {
+            "channel_id": req.channel_id, "thread_ts": req.thread_ts,
+            "pdf_url": f"{SELF_URL}/audit_pdf/{req.thread_ts}",
+            "meta_url": f"{SELF_URL}/audit_meta/{req.thread_ts}",
+            "title": req.title, "filename": req.filename, "error": "",
+        })
+    except Exception as e:
+        print("do_audit error:", e)
+        _post_json(req.webhook_url, {
+            "channel_id": req.channel_id, "thread_ts": req.thread_ts,
+            "pdf_url": "", "meta_url": "",
+            "title": req.title, "filename": req.filename, "error": str(e)[:250],
+        })
+
+
+@app.post("/audit")
+def audit(req: AuditReq, bg: BackgroundTasks):
+    if not ANTHROPIC_KEY:
+        return JSONResponse(status_code=500, content={"error": "ANTHROPIC_API_KEY not set on renderer"})
+    bg.add_task(do_audit, req)
+    return {"ok": True, "queued": True}
+
+
+@app.get("/audit_pdf/{key}")
+def audit_pdf(key: str):
+    item = AUDIT_RESULTS.get(key)
+    if not item:
+        return JSONResponse(status_code=404, content={"error": "not found"})
+    return Response(content=item["pdf"], media_type="application/pdf")
+
+
+@app.get("/audit_meta/{key}")
+def audit_meta(key: str):
+    item = AUDIT_RESULTS.pop(key, None)  # last fetch, clean up the entry
+    if not item:
+        return JSONResponse(status_code=404, content={"error": "not found"})
+    return {"html": item["html"], "images": item["images"]}
