@@ -267,17 +267,26 @@ def _anthropic_audit(prompt, documents):
     for d in documents or []:
         content.append({"type": "text", "text": f"Attached PDF for channel {d.get('channel', '')}, file {d.get('name', '')}:"})
         content.append({"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": d.get("b64", "")}})
-    body = json.dumps({"model": "claude-sonnet-4-6", "max_tokens": 16000, "messages": [{"role": "user", "content": content}]}).encode()
+    body = json.dumps({"model": "claude-sonnet-4-6", "max_tokens": 32000, "messages": [{"role": "user", "content": content}]}).encode()
     req = urllib.request.Request(
         "https://api.anthropic.com/v1/messages", data=body, method="POST",
         headers={"content-type": "application/json", "x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01"})
-    data = json.loads(urllib.request.urlopen(req, timeout=300).read())
+    data = json.loads(urllib.request.urlopen(req, timeout=600).read())
     if data.get("error"):
         raise RuntimeError("anthropic: " + json.dumps(data["error"])[:300])
     text = (data.get("content") or [{}])[0].get("text", "")
+    stop = data.get("stop_reason", "")
+    # Strip a leading ```json fence if present.
+    t = text.strip()
+    if t.startswith("```"):
+        t = t.split("\n", 1)[-1]
+        if t.rstrip().endswith("```"):
+            t = t.rstrip()[:-3]
+        text = t
     m = re.search(r"\{[\s\S]*\}", text)
     if not m:
-        raise RuntimeError("no JSON from AI")
+        # Truncated output leaves no closing brace; surface the reason.
+        raise RuntimeError(f"no JSON from AI (stop={stop}, chars={len(text)})")
     return json.loads(m.group(0))
 
 
