@@ -194,9 +194,12 @@ def peek(url: str = Query("")):
         return {"summary": ""}
 
 
-def _render_pdf(html: str, images: dict) -> bytes:
-    """Resolve + treat images, then render the HTML to PDF bytes."""
+def _render_pdf(html: str, images: dict):
+    """Resolve + treat images, then render the HTML to PDF bytes.
+    Returns (pdf_bytes, resolved) where resolved maps each slot to the concrete
+    image URL that was actually used, so the caller can lock it in."""
     tmp = tempfile.mkdtemp(prefix="csr_")
+    resolved = {}
     try:
         for f in FLAT:
             shutil.copy(os.path.join(APP_DIR, f), os.path.join(tmp, f))
@@ -214,11 +217,12 @@ def _render_pdf(html: str, images: dict) -> bytes:
                 continue
             try:
                 fn(_fetch(url), os.path.join(imgdir, fname))
+                resolved[key] = url  # the exact photo used, so it can be pinned
             except Exception as e:
                 print(f"image '{key}' failed: {e}")
             finally:
                 gc.collect()  # release big numpy/PIL buffers between images
-        return HTML(string=html, base_url=tmp).write_pdf()
+        return HTML(string=html, base_url=tmp).write_pdf(), resolved
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -226,7 +230,12 @@ def _render_pdf(html: str, images: dict) -> bytes:
 @app.post("/render")
 def render(req: RenderReq):
     try:
-        return Response(content=_render_pdf(req.html, req.images or {}), media_type="application/pdf")
+        pdf, resolved = _render_pdf(req.html, req.images or {})
+        return Response(
+            content=pdf,
+            media_type="application/pdf",
+            headers={"X-Resolved-Images": json.dumps(resolved)},
+        )
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
 
@@ -315,7 +324,11 @@ def do_audit(req: "AuditReq"):
             images = dict(req.images)  # caller override (edits keep the original cover/close)
         if req.imagery and str(req.imagery).strip().lower().startswith("http"):
             images["cover"] = str(req.imagery).strip()
-        pdf = _render_pdf(html, images)
+        pdf, resolved = _render_pdf(html, images)
+        # Lock the exact photos used so future edits/renders don't drift.
+        for k, v in (resolved or {}).items():
+            if v:
+                images[k] = v
         AUDIT_RESULTS[req.thread_ts] = {"pdf": pdf, "html": html, "images": json.dumps(images)}
         stop.set()
         _post_json(req.webhook_url, {
