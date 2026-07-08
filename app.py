@@ -276,15 +276,38 @@ def _anthropic_audit(prompt, documents):
     for d in documents or []:
         content.append({"type": "text", "text": f"Attached PDF for channel {d.get('channel', '')}, file {d.get('name', '')}:"})
         content.append({"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": d.get("b64", "")}})
-    body = json.dumps({"model": "claude-sonnet-4-6", "max_tokens": 32000, "messages": [{"role": "user", "content": content}]}).encode()
+    # Stream the response: a big audit can take minutes, and a non-streaming read
+    # will time out. Streaming keeps data flowing so the socket never idles.
+    body = json.dumps({
+        "model": "claude-sonnet-4-6", "max_tokens": 32000, "stream": True,
+        "messages": [{"role": "user", "content": content}],
+    }).encode()
     req = urllib.request.Request(
         "https://api.anthropic.com/v1/messages", data=body, method="POST",
         headers={"content-type": "application/json", "x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01"})
-    data = json.loads(urllib.request.urlopen(req, timeout=600).read())
-    if data.get("error"):
-        raise RuntimeError("anthropic: " + json.dumps(data["error"])[:300])
-    text = (data.get("content") or [{}])[0].get("text", "")
-    stop = data.get("stop_reason", "")
+    text = ""
+    stop = ""
+    resp = urllib.request.urlopen(req, timeout=600)
+    for raw in resp:
+        line = raw.decode("utf-8", "ignore").strip()
+        if not line.startswith("data:"):
+            continue
+        payload = line[5:].strip()
+        if payload == "[DONE]":
+            break
+        try:
+            ev = json.loads(payload)
+        except Exception:
+            continue
+        et = ev.get("type")
+        if et == "content_block_delta":
+            delta = ev.get("delta", {})
+            if delta.get("type") == "text_delta":
+                text += delta.get("text", "")
+        elif et == "message_delta":
+            stop = (ev.get("delta") or {}).get("stop_reason", stop)
+        elif et == "error":
+            raise RuntimeError("anthropic: " + json.dumps(ev.get("error", ev))[:300])
     # Strip a leading ```json fence if present.
     t = text.strip()
     if t.startswith("```"):
