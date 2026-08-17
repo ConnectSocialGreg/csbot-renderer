@@ -279,7 +279,7 @@ def _anthropic_audit(prompt, documents):
     # Stream the response: a big audit can take minutes, and a non-streaming read
     # will time out. Streaming keeps data flowing so the socket never idles.
     body = json.dumps({
-        "model": "claude-sonnet-4-6", "max_tokens": 32000, "stream": True,
+        "model": "claude-opus-5", "max_tokens": 32000, "stream": True,
         "messages": [{"role": "user", "content": content}],
     }).encode()
     req = urllib.request.Request(
